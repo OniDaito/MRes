@@ -2,7 +2,15 @@ A repository for my latest work on the MRes, fit for showing to the wider world.
 
 # Contents
 
-## nn01.py
+## net01 - nn01/nn01.py
+
+Run with Tensorflow on a gpu with:
+
+    python nn01.py
+
+Load a pre-trained version:
+
+    python nn01.py -r
 
 First stab at an actual neural net for dealing with the problem. My approach is to use a convolutional neural net design and *shoe-horn* it into being a TDNN. 
 
@@ -16,16 +24,20 @@ The next layer, I hope, is fully connected. There follows a reshape and then a f
 
 Things that make this not work are the CDRs less than max length long. We need to figure out how to drop these from the training data when they appear somehow?
 
+Im using tanh as activation functions as spans the range I'm looking for (-1 to 1). Not sure if thats needed internally however. It doesn't seem to affect the quality of the output.
+
+In addition, changing window size doesn't change much but reducing the batch size to 1 helps the reported accuracy a bit.
+
 ### Diagrams of the output thus far from the tensorboard and dia
 
 This needs more work I think - need to output the various sizes of the tensors.
 
-![dia version](nn01.png)
+![dia version](nn01/nn01.png)
 
-Use 
- tensorboard --logdir=./summaries_01/train/
+Use: 
+    tensorboard --logdir=./summaries_01/train/
 
-![tensorboard](nn01_tensorboard.png)
+![tensorboard](nn01/nn01_tensorboard.png)
 
 
 ### Things I've read at this point
