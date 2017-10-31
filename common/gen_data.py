@@ -25,15 +25,31 @@ def grab_angles(conn):
     rows = cur1.fetchall()
 
     aa = []
+
+    if len(rows) == 0:
+      print("ERROR with model " + mname + ". No angles returned")
+      continue
+
+    idx = 0
     for row in rows:
       phi = row[1]
       psi = row[2]
       # Changing to sin makes the angle a little more continuous I think
-      aa.append( (math.sin(math.radians(phi)),
+     
+      tt = [ math.sin(math.radians(phi)),
         math.cos(math.radians(phi)), 
         math.sin(math.radians(psi)), 
-        math.cos(math.radians(psi))
-      ))
+        math.cos(math.radians(psi))]
+
+      # -3.0 is our global ignore value
+      if idx == 0:
+        tt[0] = -3.0
+      
+      if idx == len(rows)-1:
+        tt[3] = -3.0
+
+      aa.append(tt)
+      idx+=1
       
     angles[mname] = {}
     angles[mname]["angles"] = aa
@@ -41,7 +57,7 @@ def grab_angles(conn):
   return angles
 
 def grab_residues(conn, angles):
-  ''' Grab the residues from the database as well '''
+  ''' Grab the residues from the database as well. '''
   cur0 = conn.cursor()
   cur0.execute("SELECT * from model")
   models = cur0.fetchall()
@@ -59,7 +75,8 @@ def grab_residues(conn, angles):
       # Changing to sin makes the angle a little more continuous I think
       aa.append( (residue, reslabel) )
   
-    angles[mname]["residues"] = aa
+    if mname in angles:
+      angles[mname]["residues"] = aa
 
 def create_data_sets(angles):
   ''' Create our various datasets. 80% train, 10% test, 10% validation. ''' 

@@ -6,11 +6,12 @@ email : oni@section9.co.uk
 
 import os, math, pickle
 import numpy as np
+import tensorflow as tf
 
 # Import common items
 parentdir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.sys.path.insert(0,parentdir)
-from common import gen_data
+from . import gen_data
 
 class NNGlobals (object):
   def __init__(self):
@@ -22,6 +23,19 @@ class NNGlobals (object):
     self.window_size = 4
     self.pickle_filename = 'pdb_martin_01.pickle'
     self.learning_rate = 0.1
+
+def variable_summaries(var, label):
+  """Attach a lot of summaries to a Tensor (for TensorBoard visualization).
+  Taken from https://www.tensorflow.org/get_started/summaries_and_tensorboard """
+  with tf.name_scope('summaries'):
+    mean = tf.reduce_mean(var)
+    tf.summary.scalar('mean-' + label, mean)
+    with tf.name_scope('stddev-' + label):
+      stddev = tf.sqrt(tf.reduce_mean(tf.square(var - mean)))
+    tf.summary.scalar('stddev-' + label, stddev)
+    tf.summary.scalar('max-' + label, tf.reduce_max(var))
+    tf.summary.scalar('min-' + label, tf.reduce_min(var))
+    tf.summary.histogram('histogram-' + label , var)
 
 def amino_mask(label, FLAGS):
   ''' Create a one hot encoded bitfield affair for
@@ -41,7 +55,7 @@ def bitmask_to_acid(FLAGS, mask):
   return "***"
 
 
-def angles_to_array(angle_set, FLAGS):
+def angles_to_array(angle_set, FLAGS, padding=True):
   ''' Convert our sequence and angles to numpy arrays.
   We might be able to do more of this in SQL. Our arrays here
   are max_cdr x num_acids - 2D. We generate a feature map for
@@ -71,23 +85,24 @@ def angles_to_array(angle_set, FLAGS):
       tu.append(angle[2])
       tu.append(angle[3])
 
-    # Fill in the remainder 
-    # TODO - Note that in Andrew's paper, the missing ones go in the middle
-    ll = len(aa['residues'])
+    if padding:
+      # Fill in the remainder 
+      # TODO - Note that in Andrew's paper, the missing ones go in the middle
+      ll = len(aa['residues'])
 
-    if ll < FLAGS.max_cdr_length:
-      for i in range(ll,FLAGS.max_cdr_length):
-        ta = []
-        tb = [0.0,0.0,0.0,0.0] # This may not be the best setting as 0 can occur
+      if ll < FLAGS.max_cdr_length:
+        for i in range(ll,FLAGS.max_cdr_length):
+          ta = []
+          tb = [-3.0,-3.0,-3.0,-3.0] # -3.0 can never occur
 
-        for n in range(0,FLAGS.num_acids):
-          ta.append(False)
-        
-        tt.append(ta) # append the amino acid bitmasks
-        tu = tu + tb  # merge angles into one long list
+          for n in range(0,FLAGS.num_acids):
+            ta.append(False)
+          
+          tt.append(ta) # append the amino acid bitmasks
+          tu = tu + tb  # merge angles into one long list
 
-    ft.append(tt)
-    fu.append(tu)
+      ft.append(tt)
+      fu.append(tu)
 
   print(len(fu), len(fu[0]), len(ft), len(ft[1]))
   input_set = np.array(ft,dtype=np.bool)
@@ -101,7 +116,7 @@ def pickle_it(filename, dataset):
     print("Pickling data...")
     pickle.dump(dataset, f, pickle.HIGHEST_PROTOCOL)
 
-def init_data_sets(FLAGS) :
+def init_data_sets(FLAGS, padding=True) :
   ''' Create the datasets we need for training and the like. If the data 
   is already there and pickled, use that to save time.'''
 
@@ -123,8 +138,8 @@ def init_data_sets(FLAGS) :
     # We could use a single bit to represent each amino acid, but instead im using a bool and 
     # hoping numpy does the decent thing. Not too short of memory in this project
   
-    training_input, training_output = angles_to_array(training_angles, FLAGS)
-    validate_input, validate_output = angles_to_array(validate_angles, FLAGS)
+    training_input, training_output = angles_to_array(training_angles, FLAGS, padding)
+    validate_input, validate_output = angles_to_array(validate_angles, FLAGS, padding)
     test_input, test_output = angles_to_array(test_angles, FLAGS)
     # I wanna see you pickle it (just a little bit)
     pickle_it(FLAGS.pickle_filename,(training_input, training_output, validate_input, validate_output, test_input, test_output))
@@ -152,5 +167,13 @@ def next_batch(input_data, output_data, FLAGS) :
   FLAGS.next_batch = b
 
   return (input_data[s:b], output_data[s:b])
+
+def next_item(input_data, output_data, FLAGS) : 
+  ''' In this case, we just return the next item in the 
+  training and test sets.'''
+
+  s = FLAGS.next_batch
+  FLAGS.next_batch = s+1
+  return (input_data[s:s+1], output_data[s:s+1])
 
 
