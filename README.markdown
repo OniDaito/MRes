@@ -4,6 +4,11 @@
 
 The following are the various Jupyter notebooks for each Neural Network Experiment
 
+
+### LSTM First Bash for Torsion Angles.ipynb
+
+This notebook goes a little further. It is my first attempt at an LSTM with dropout added.
+
 ### TDNN Approximation for Backbone Torsion Angles.ipynb
 
 As the name suggests, this is my attempt at creating a TDNN that attempts to predict backbone torsion angles from the CDR-H3 residues.
