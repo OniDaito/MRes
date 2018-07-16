@@ -16,6 +16,11 @@ This directory contains the early networks we experimented with. They all share 
 
 The following are the various Jupyter notebooks for some of the key, early concepts I used. They should run fine with the sample data, but are really for understanding the basic concepts only.
 
+
+### LSTM First Bash for Torsion Angles.ipynb
+
+This notebook goes a little further. It is my first attempt at an LSTM with dropout added.
+
 ### TDNN Approximation for Backbone Torsion Angles.ipynb
 
 As the name suggests, this is my attempt at creating a TDNN that attempts to predict backbone torsion angles from the CDR-H3 residues.
