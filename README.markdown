@@ -1,8 +1,20 @@
 # Contents
 
+## Final networks
+
+
+## Data generation
+
+
+## Early networks
+
+This directory contains the early networks we experimented with. They all share code from the common directory. Networks 02, 06, 13 and 23 are included, as these are the ones referred to in the thesis. 
+
+### Running the networks
+
 ## Jupyter Notebooks
 
-The following are the various Jupyter notebooks for each Neural Network Experiment
+The following are the various Jupyter notebooks for some of the key, early concepts I used. They should run fine with the sample data, but are really for understanding the basic concepts only.
 
 ### TDNN Approximation for Backbone Torsion Angles.ipynb
 
@@ -13,6 +25,8 @@ As the name suggests, this is my attempt at creating a TDNN that attempts to pre
 The **common** directory contains some supporting Python for the grabbing and wrangling of the data for our neural network. For most users, it's enough to know it spits out numpy arrays for our train, test and validate sets.
 
 ## Useful Resources
+
+Some useful links for these wanting to get started with neural networks related to structural biology.
 
 * [https://www.tensorflow.org/get_started/mnist/beginners](https://www.tensorflow.org/get_started/mnist/beginners)
 * [https://www.tensorflow.org/get_started/mnist/pros](https://www.tensorflow.org/get_started/mnist/pros)
