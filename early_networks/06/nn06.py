@@ -198,8 +198,6 @@ def run_session(graph, datasets):
       
       #train_step = tf.train.GradientDescentOptimizer(FLAGS.learning_rate).minimize(basic_error)
       optimizer = tf.train.AdagradOptimizer(FLAGS.learning_rate)
-      
-      # No idea what this is :/ Gradient Clipping apparently
       gvs = optimizer.compute_gradients(basic_error)
       capped_gvs = [(tf.clip_by_value(grad, -1., 1.), var) for grad, var in gvs]
       train_step = optimizer.apply_gradients(capped_gvs)

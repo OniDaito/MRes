@@ -1,7 +1,7 @@
 """
 gen_data_end.py - Generate some data from the PostGreS to NN, restricting via endpoint dist
 author : Benjamin Blundell
-email : oni@section9.co.uk
+email : me@benjamin.computer
 """
 
 import sys

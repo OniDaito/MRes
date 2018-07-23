@@ -1,7 +1,7 @@
 """
 gen_data.py - Generate some data from the PostGreS to NN
 author : Benjamin Blundell
-email : oni@section9.co.uk
+email : me@benjamin.computer
 """
 
 import sys

@@ -1,7 +1,8 @@
 """
 batch_real.py - converting and batching our data for the real numbered angles
+but including the omega angle
 author : Benjamin Blundell
-email : oni@section9.co.uk
+email : me@benjamin.computer
 """
 
 import os, math, pickle
