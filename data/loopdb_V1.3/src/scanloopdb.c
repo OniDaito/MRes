@@ -153,6 +153,7 @@ int main(int argc, char **argv)
                   {
                      if(!PrintLoops(out, loops, numResult))
                      {
+                        
                         fprintf(stderr,"No memory to sort results\n");
                         return(1);
                      }
@@ -213,7 +214,6 @@ LOOP *FindLoops(PDB *pdb, char *startRes, char *endRes, FILE *dbf,
    REAL distMat[3][3];
    LOOP *loops = NULL;
 
-
    if((pStartRes = blFindResidueSpec(pdb, startRes))==NULL)
       return(NULL);
    if((pEndRes = blFindResidueSpec(pdb, endRes))==NULL)
@@ -230,7 +230,6 @@ LOOP *FindLoops(PDB *pdb, char *startRes, char *endRes, FILE *dbf,
       }
    }
    
-
    /* Find the 3 residues before the start of the loop                  */
    for(p=pdb; p!=pStartRes; NEXT(p))
    {
@@ -245,6 +244,7 @@ LOOP *FindLoops(PDB *pdb, char *startRes, char *endRes, FILE *dbf,
    c[2] = (c[1] != NULL)?c[1]->next:NULL;
 
    /* Build the distance matrix                                         */
+   /* Find the 3 residues before the start of the loop                  */
    for(i=0; i<3; i++)
    {
       for(j=0; j<3; j++)
@@ -253,8 +253,10 @@ LOOP *FindLoops(PDB *pdb, char *startRes, char *endRes, FILE *dbf,
       }
    }
 
+   /* Find the 3 residues before the start of the loop                  */
    /* Scan the matrix against the database                              */
    loops = ScanMatrix(distMat, loopLen, dbf, tolerance);
+
 
    return(loops);
 }
@@ -546,7 +548,7 @@ BOOL PrintLoops(FILE *out, LOOP *loops, int maxLoops)
 
    for(i=0; i<nLoops && i<maxLoops; i++)
    {
-      fprintf(out, "%s : %f\n", indx[i]->buffer, indx[i]->score);
+     fprintf(out, "%s : %f\n", indx[i]->buffer, indx[i]->score);
    }
    free(indx);
    return(TRUE);
