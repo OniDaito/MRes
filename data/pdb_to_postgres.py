@@ -1,37 +1,50 @@
 """
-pdb_to_mongo.py - convert a series of PDB loops to data for mongo
+pdb_to_postgres.py - convert a series of PDB loops to data for postgres
 author : Benjamin Blundell
 email : me@benjamin.computer
 
-Currently using biopython for this but I don't think we *really* need to.
-Some PDBs actually don't contain torsion angles so we need to detect these
-I think and reject.
+Currently using biopython for this but I don't think we *really* need
+to. Some PDBs actually don't contain torsion angles so we need to
+detect these I think and reject.
+
+By default, we cut out the 3 residues prior to the loop and the 3 
+after. We do the same with both LoopDB and AbDb.
 
 """
 
 from Bio.PDB import *
-import sys, time, pymongo, traceback, os, argparse
+from Bio.PDB.Polypeptide import is_aa, three_to_one
+import sys
+import time
+import psycopg2
+import traceback
+import os
+import argparse
+import torsions
 
-class PDBMongo ():
+class PDBDB ():
 
   def __init__(self):
     self.parser = PDBParser()
     self.conn = None
 
   def db_connect(self, dbname):
-    """ Connect to the mongo database instance. """
-    from pymongo import MongoClient
-    self.conn = MongoClient()
-    self.conndb = self.conn[dbname]
-
+    """ Connect to the postgresql database instance. """
+    self.conn = psycopg2.connect("dbname=" + dbname + " user=postgres")
+  
   def gen_angles(self):
     """ Generate the angles we will need for our neural net. """ 
+    if self.conn != None:
+      cur = self.conn.cursor()
+ 
     try:
-      for model in self.conndb.models.find(\
-          no_cursor_timeout=True).batch_size(3):
-        mname = model["code"].replace(" ","")
-        atoms = self.conndb.atoms.find({"model" : mname},\
-            no_cursor_timeout=True)
+      cur.execute("SELECT * FROM model")
+
+      for model in cur.fetchall():
+        mname = model[0].replace(" ","")
+        print("Generating angles for", mname)
+        cur.execute("SELECT * FROM atom where model = '" + mname + "'")
+        atoms = cur.fetchall()
    
         try: 
           # Extract the different residues 
@@ -39,24 +52,24 @@ class PDBMongo ():
           current_residue = [] # name, amino, num, x, y, z
           current_name = ""
           dd = 0
-          previdx = atoms[0]['resseq']
+          previdx = atoms[6]
 
           for atom in atoms:
             # model, num, label, space, amino, chain, res num, none, 
             # x, y, z, <rest not needed>
-            if atom['resname'] != current_name or atom['name'] == 'N':
-              current_name = atom['resname']
+            if atom[4] != current_name or atom[2] == 'N':
+              current_name = atom[4]
               if len(current_residue) != 0 :
-                if int(atom['resseq']) == previdx:
+                if int(atom[6]) == previdx:
                   dd += 1
 
-                previdx = int(atom['resseq'])
+                previdx = int(atom[6])
                 residues.append(current_residue.copy())
                 current_residue = []
                 dd = 0
         
-            rr = (atom['name'], atom['resname'], int(atom['resseq']),\
-                float(atom['x']), float(atom['y']), float(atom['z']))
+            rr = (atom[2], atom[4], int(atom[6]),\
+                float(atom[8]), float(atom[9]), float(atom[10]))
             current_residue.append(rr)
 
           residues.append(current_residue)
@@ -72,9 +85,10 @@ class PDBMongo ():
           idx = 0
           for res in residues:
             try:
-              tres = { "model" : mname, "residue" : res[1][1],\
-                  "reslabel" : res[1][2], "resorder" : idx }
-              self.conndb.residues.insert_one(tres)
+              cur.execute("INSERT INTO residue (model,residue,\
+                  reslabel, resorder) VALUES (%s, %s, %s, %s)",\
+                  (mname,res[1][1],res[1][2], idx))
+              self.conn.commit()
               
             except Exception as e:
               print("Error inserting into DB - " + model, e)
@@ -89,9 +103,11 @@ class PDBMongo ():
           idx = 0
           for aa in angles:
             try:
-              tangle = {"model" : mname, "phi" : aa[0], \
-                  "psi" : aa[1], "omega" : aa[2], "resorder" : idx }
-              self.conndb.angles.insert_one(tangle)
+             cur.execute("INSERT INTO angle (model,phi,psi,omega,\
+                 resorder) VALUES (%s, %s, %s, %s, %s)",\
+                 (mname, aa[0], aa[1], aa[2], idx))
+             self.conn.commit()
+  
             except Exception as e:
               print("Error inserting into DB - " + model, e)
             idx +=1
@@ -128,9 +144,9 @@ class PDBMongo ():
       if atom_count > 10:
         break
         
-      if atom_count < 10:
-        print("PDB Model contains no atoms.")
-        return (False, seq)
+    if atom_count < 10:
+      print("PDB Model contains no atoms.")
+      return (False, seq)
 
     return (True, seq)
     
@@ -147,9 +163,10 @@ class PDBMongo ():
     for model in models:
       mname = os.path.splitext(model.get_full_id()[0][0])[0]
       print("Working with ", mname)
-      tokens = mname.split("-")
-      filename = tokens[0]
- 
+      tokens = mname.split("_")
+      model_code = tokens[0]
+      loop_code = mname 
+
       try:
         # Some PDBs are missing atoms so make sure we have some :/
         # This code is a bit rough but might work
@@ -160,14 +177,17 @@ class PDBMongo ():
 
         # We make a call to get the mmCIF file which we need to make
         # this work
-        pdbl = PDBList()
-        pdbl.retrieve_pdb_file(filename.upper())
-        dn = "" + filename[1] + filename[2] 
+        pdbl = PDBList()      
+        dn = "" + filename[1] + filename[2] + "/" + model_code + ".cif"
+  
+        if not os.path.isfile(dn):
+          pdbl.retrieve_pdb_file(model_code.upper())
+
         resolution = -1.0
         rvalue = -1.0
         rfree = -1.0
  
-        with open(dn + "/" + filename + ".cif", 'r') as f:
+        with open(dn, 'r') as f:
           pdbraw = f.readlines()  
           try:
             for line in pdbraw:
@@ -187,17 +207,19 @@ class PDBMongo ():
             continue
 
         if self.conn != None:
-          mm = self.conndb.models
-          # We search by sequence as we don't want any duplicates
-          tt = mm.find_one({"seq" : seq})
+          cur = self.conn.cursor()
+          cur.execute("SELECT FROM model where code = '"\
+              + loop_code + "'")
+          tt = cur.fetchone()
 
           if tt == None:
             if self.conn != None:
-              new_model = { "code" : mname, "filename" : bn,\
-                  "rfree": rfree, "rvalue": rvalue,\
-                  "resolution" : resolutionm, "seq" : seq}}
-              mm_id = mm.insert_one(new_model).inserted_id
-       
+              cur.execute("INSERT INTO model (code, filename, \
+                  rvalue, rfree, resolution) \
+                  VALUES (%s, %s, %s, %s, %s)", \
+                  (loop_code, bn, rvalue, rfree, resolution))
+              self.conn.commit()
+ 
             for atom in model.get_atoms():
               #import pdb; pdb.set_trace()
               #print(atom, dir(atom))
@@ -217,39 +239,51 @@ class PDBMongo ():
               aele = atom.element
         
               if self.conn != None:
-                new_atom = { "model" : mname, "serial" : aserial,\
-                    "name": aname, "altloc" : aaltloc,\
-                    "resname" : aresname, "chainid" : achainid,\
-                    "resseq" : aresseq, "x" : ax, "y" : ay,\
-                    "z" : az, "occupancy" : aocc,\
-                    "bfactor" : abfac, "element" : aele } 
-                mm = self.conndb.atoms
-                mm_id = mm.insert_one(new_atom).inserted_id 
-              else: 
-                print(mname, "atom:", aele, ",", aserial)
-          except Exception as e:
-            print ("Exception in model insert: ", e)
-            import traceback
-            traceback.print_exc()
-            sys.exit(1)
+                cur.execute("INSERT INTO atom (model, serial, name, \
+                    altloc, resname, chainid, resseq, x, y, z, \
+                    occupancy, tempfactor, element) \
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, \
+                    %s, %s, %s)", \
+                    (loop_code, aserial, aname, aaltloc, aresname, \
+                    achainid, aresseq, ax, ay, az, aocc, abfac, \
+                    aele)) 
+                self.conn.commit()
+
+      except Exception as e:
+        print ("Exception in model insert: ", e)
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(description="Process arguments")
   parser.add_argument('db_name', metavar='db_name',\
-      help='The destination database name')
+      help='The destination database name.')
   parser.add_argument('dir_name', metavar='dir_name',\
       help='The directory with the PDBs we want to process.')
+  parser.add_argument('--abdb', dest='abdb',\
+      action='store_true', default=False,\
+      help='Using the AbDb PDB files. Default False.')
   parser.add_argument('--dry-run', dest='dry_run',\
       action='store_true', default=False,\
-      help='Do not enter new data into the db. Default False')
+      help='Do not enter new data into the db. Default False.')
+  parser.add_argument('--limit', dest='limit',\
+      type=int, default=-1,\
+      help='Limit the number of pdb files. Default unlimited.')
 
   args = vars(parser.parse_args())
-  p = PDBMongo()
+  p = PDBDB()
   print(args)
   if not args['dry_run']:
     p.db_connect(args["db_name"])
 
+  count = 0
   for dirname, dirnames, filenames in os.walk(args["dir_name"]):
     for filename in filenames:
       p.process_pdb(os.path.join(dirname, filename))
+      count = count + 1
+      if args['limit'] != -1 and count >= args['limit']:
+        p.gen_angles()
+        sys.exit(0)
 
+  p.gen_angles()

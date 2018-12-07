@@ -18,14 +18,14 @@ There are a few software requirements:
 * python3
 * [biopython]()
 * [bioptools](https://github.com/ACRMGroup/bioptools)
-* [pymongo]()
+* [psycopg2]()
 * GCC
 * Git
-* A working [mongodb]() install.
+* A working [postgresql]() install.
 
 You can install these using programs such as '''pip''' using either your base install or with [virtualenv](). For example:
 
-    pip install pymongo
+    pip install psycopg2
 
 Bioptools is a useful set of small, C programs that work well with PDB files. You can extract zones, chains, headers, perform stats and do a lot of cleaning. We use it here to extract the loop sections from the PDB.
 
@@ -64,7 +64,7 @@ We need to extract the loops and create a new set of PDB files. We have a script
 This results in a set of PDB loop files. The final step is to load these into the mongodb ready for processing by our neural network. To do that, we have one last python program:
 
 
-    python pdb_to_mongo.py <dbname> <path to pdbs>
+    python pdb_to_postgres.py <dbname> <path to pdbs>
 
 Again, this will take quite a while. On our base system this took a few days. Processing the files includes generating angles from atom positions, checking residues are correct and downloading the accuracy scores for each file.
 
