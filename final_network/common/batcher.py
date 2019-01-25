@@ -531,7 +531,7 @@ class Batcher(object):
     
     print("Created training set of size: ", len(self.train_set))
      
-  def create_sets_from_pickle(self, filename, partial_pickle=True):
+  def create_sets_from_pickle(self, filename, partial_pickle=False):
     ''' Load the data from a pickle file. '''
     import pickle
     print("Loading from pickle file")
@@ -831,26 +831,26 @@ if __name__ == "__main__":
   import acids, gen_data 
   import argparse
   parser = argparse.ArgumentParser(description='Create Loop batches')
-  parser.add_argument('--both', action='store_true', help='generate pdbs from test set')
   parser.add_argument('--nobad', action='store_true', help='Remove bad loops')
   parser.add_argument('--deets', action='store_true', help='Read sets and print stats')
   parser.add_argument('--size', type=int, help='Total set size from loopdb')
   parser.add_argument('--max', type=int, help='Max CDR length')
   parser.add_argument('--min', type=int, help='Min CDR length')
   parser.add_argument('--block', action='store_true', help='Block redundants')
+  parser.add_argument('--partial', action='store_true', help='Make multiple pickle files.')
   parser.add_argument('--fixed', type=int, help='Only one size of CDR')
   parser.add_argument('--typein', type=int, help='Which type of batch? [0 bitfield, 1 bittrip, 2 fived, 3 fivedtrip, 4 fiveadd]')
   parser.add_argument('--typeout', type=int, help='Which type of batch? [0 sin/cos/phi/psi 1 cat]')
   parser.add_argument('--out', type=str, help='Name of the output file')
+  parser.add_argument('--dbname', type=str, help='Name of the database', default="loopdb")
   
-
   args = parser.parse_args()
   #g = gen_data.Grabber(remove_bad_endpoint = args.nobad, remove_odd_omega = args.nobad)
   # AMA ignore list
-  ama_list = ["4MA3_1", "4MA3_2","4KUZ_1", "4KQ3_1", "4KQ4_1", "4M6M_1", "4M6O_1", "4MAU_1", "4M7K_1", "4KMT_1", "4M61_1", "4M61_2", "4M43_1"]
+  #ama_list = ["4MA3_1", "4MA3_2","4KUZ_1", "4KQ3_1", "4KQ4_1", "4M6M_1", "4M6O_1", "4MAU_1", "4M7K_1", "4KMT_1", "4M61_1", "4M61_2", "4M43_1"]
 
   mincdr = 0
-  maxcdr = 32
+  maxcdr = 28
   if args.fixed:
     mincdr = int(args.fixed)
     maxcdr = mincdr
@@ -876,38 +876,25 @@ if __name__ == "__main__":
   if args.deets and args.max and args.out:
     print("Reading details of pickles.")
     d = Batcher(max_cdr_length = maxcdr, typein = typein, typeout=typeout, batch_size = 2)
-    d.create_sets_from_pickle(filename=out_name, partial_pickle = args.both)
+    d.create_sets_from_pickle(filename=out_name, partial_pickle=args.partial)
     (ix,ox,loops) = d.random_batch(SetType.VALIDATE)
     print("Sizes (train, validate, test)", len(d.train_set), len(d.validate_set), len(d.test_set))
     import sys
     sys.exit()
 
-  g = gen_data.Grabber(remove_bad_endpoint = args.nobad, remove_odd_omega = args.nobad, mongo=False)
+  g = gen_data.Grabber(remove_bad_endpoint = args.nobad, remove_odd_omega = args.nobad, dbname = args.dbname)
   (loops, summary, blockers) = g.grab(min_length=mincdr, max_length=maxcdr, block=args.block)
 
-  if args.both:
-    g = gen_data.Grabber(remove_bad_endpoint = args.nobad, remove_odd_omega = args.nobad, mongo=True)
-    ll = -1
-    if args.size:
-      ll = int(args.size)
-    # No blockers from mongo as we've already filtered them out
-    (loops_m, summary_m) = g.grab(limit=ll,min_length=mincdr, max_length=maxcdr, block=args.block)
-    loops = loops + loops_m
-  
-
   b = Batcher(max_cdr_length = maxcdr, typein = typein, typeout=typeout, datasize=50)
-  b.create_sets_from_loops(loops, filename=out_name, blockers=blockers, ignores=ama_list, partial_pickle = args.both)
-  if not args.both:
-    b.pickle_it(out_name)
+  b.create_sets_from_loops(loops, filename=out_name, blockers=blockers, partial_pickle=args.partial)
+  b.pickle_it(out_name)
 
   # Test re-reading
   c = Batcher(max_cdr_length = maxcdr, typein = typein, typeout=typeout, batch_size = 2)
-  c.create_sets_from_pickle(filename=out_name, partial_pickle = args.both)
+  c.create_sets_from_pickle(filename=out_name, partial_pickle=args.partial)
 
   (ix,ox,loops) = c.random_batch(SetType.VALIDATE)
   print (ix)
   print (ox)
   print (c.create_mask(ix))
   print ("Loaded train/in/out size", len(c.train_set), c.train_set_np[0].shape, c.train_set_np[1].shape)
-
-

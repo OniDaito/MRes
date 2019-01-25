@@ -1,20 +1,12 @@
 """
 torsions.py - module for working out backbone torsions
 author : Benjamin Blundell
-email : me@benjamin.computer
+email : oni@section9.co.uk
 
-This program will derive a set of phi, psi and omega
-angles when given a set of residues. Useful in 
-determining protein backbones.
 
 """
 
 import math
-
-# The following are simple math functions - speeding these
-# up might be a good place to start with improvements. For
-# now, this is a little easier than numpy or other functions
-# but eventually, we should use something faster.
 
 def cross(u,v):
   x = (u[1]*v[2]) - (u[2]*v[1])

@@ -31,7 +31,6 @@ if __name__ == "__main__":
   parser.add_argument('--endgen', type=int, help='End point in the generation set')
   parser.add_argument('--savepath', help='Specify the path to save the net to. Default ./saved/')
   parser.add_argument('--savename', help='Specify a save name prefix. Default model.ckpt.')
-  parser.add_argument('--mongo', action='store_true', help='Use the mongo database instead of postgres.')
   parser.add_argument('--removeomega', action='store_true', help='Remove models with bad omega.')
   parser.add_argument('--removeend', action='store_true', help='Remove models with bad endpoints.')
   parser.add_argument('--datalimit', type=int, help='Limit the total number of data items.')
@@ -50,7 +49,7 @@ if __name__ == "__main__":
   FLAGS.learning_rate = 0.004
   FLAGS.num_epochs = 2000 # number of loops around the training set
   FLAGS.batch_size = 5
-  FLAGS.kinematic = args.kinematic
+  #FLAGS.kinematic = args.kinematic
   FLAGS.scaffold = False
   FLAGS.lstm_size = 256
   FLAGS.error_window = 5
@@ -129,7 +128,7 @@ if __name__ == "__main__":
     from common import gen_data
     
     print("Grabbing data from database...")
-    g = gen_data.Grabber(remove_bad_endpoint = args.removeend, remove_odd_omega = args.removeomega, mongo=args.mongo)
+    g = gen_data.Grabber(remove_bad_endpoint = args.removeend, remove_odd_omega = args.removeomega)
     limit = -1
     if args.datalimit:
       limit = args.datalimit
