@@ -23,6 +23,7 @@ import argparse
 import torsions
 
 class PDBDB ():
+
   def __init__(self):
     self.parser = PDBParser()
     self.conn = None
@@ -33,7 +34,6 @@ class PDBDB ():
   
   def gen_angles(self):
     """ Generate the angles we will need for our neural net. """ 
-    error_models = []
     if self.conn != None:
       cur = self.conn.cursor()
  
@@ -43,7 +43,7 @@ class PDBDB ():
       for model in cur.fetchall():
         mname = model[0].replace(" ","")
         print("Generating angles for", mname)
-        cur.execute("SELECT * FROM atom where model = '" + mname + "' order by serial")
+        cur.execute("SELECT * FROM atom where model = '" + mname + "'")
         atoms = cur.fetchall()
    
         try: 
@@ -55,8 +55,8 @@ class PDBDB ():
           previdx = atoms[6]
 
           for atom in atoms:
-            # model, serial name altloc resname chainid resseq icode x y z occupancy tempf element id 
-          
+            # model, num, label, space, amino, chain, res num, none, 
+            # x, y, z, <rest not needed>
             if atom[4] != current_name or atom[2] == 'N':
               current_name = atom[4]
               if len(current_residue) != 0 :
@@ -73,8 +73,11 @@ class PDBDB ():
             current_residue.append(rr)
 
           residues.append(current_residue)
-          # Previously we dropped 3 residues either side. We now include
-          # the entire PDB file and drop afterwards if we so choose.
+          # We drop the first and last 3 as these are the anchor points
+          # in pdb_loopdb apparently
+          residues = residues[3:]
+          residues = residues[:-3]
+  
           if len(residues) < 3:
             continue
 
@@ -88,12 +91,12 @@ class PDBDB ():
               self.conn.commit()
               
             except Exception as e:
-              print("Error inserting into DB", model, e)
+              print("Error inserting into DB - " + model, e)
               traceback.print_exc()
-              error_models.append(model)
+              sys.exit()
 
             idx+=1
-          
+ 
           # Now we have all the residues, work out the angles and write
           # to the database.
           angles = torsions.derive_angles(residues)
@@ -107,26 +110,19 @@ class PDBDB ():
   
             except Exception as e:
               print("Error inserting into DB - " + model, e)
-              error_models.append(model)
             idx +=1
           
           sys.stdout.write("\n")
         except Exception as e:
-          print("Error with model: ", model)
           print(e)
-          error_models.append(model)
           traceback.print_exc()
-          #sys.exit()
+          sys.exit()
 
     except Exception as e:
         print ("Exception in DB read: ", e)
         traceback.print_exc()
         sys.exit()
-    
-    with open("error_models.txt", 'w') as w:
-      for item in error_models:
-        w.write(item + "\n")
-  
+
   def _check(self, model):
     seq = ""
     for chain in model:
@@ -182,7 +178,7 @@ class PDBDB ():
         # We make a call to get the mmCIF file which we need to make
         # this work
         pdbl = PDBList()      
-        dn = "" + filename[1].lower() + filename[2].lower() + "/" + model_code.lower() + ".cif"
+        dn = "" + filename[1] + filename[2] + "/" + model_code + ".cif"
   
         if not os.path.isfile(dn):
           pdbl.retrieve_pdb_file(model_code.upper())
@@ -190,26 +186,25 @@ class PDBDB ():
         resolution = -1.0
         rvalue = -1.0
         rfree = -1.0
-        try: 
-          with open(dn, 'r') as f:
-            pdbraw = f.readlines()  
-            try:
-              for line in pdbraw:
-                if "_refine.ls_R_factor_R_work " in line:
-                  tokens = line.split(" ")
-                  rvalue = float(tokens[-2])
+ 
+        with open(dn, 'r') as f:
+          pdbraw = f.readlines()  
+          try:
+            for line in pdbraw:
+              if "_refine.ls_R_factor_R_work " in line:
+                tokens = line.split(" ")
+                rvalue = float(tokens[-2])
 
-                elif "_refine.ls_R_factor_R_free " in line:
-                  tokens = line.split(" ")
-                  rfree=float(tokens[-2])
-         
-                elif "_reflns.d_resolution_high " in line:
-                  tokens = line.split(" ")
-                  resolution=float(tokens[-2])
-            except Exception as e:
-              print("Error parsing R values", e)
-        except Exception as e:
-          print("Failed to read R file", e)
+              elif "_refine.ls_R_factor_R_free " in line:
+                tokens = line.split(" ")
+                rfree=float(tokens[-2])
+       
+              elif "_reflns.d_resolution_high " in line:
+                tokens = line.split(" ")
+                resolution=float(tokens[-2])
+          except Exception as e:
+            print("Error parsing R values", e)
+            continue
 
         if self.conn != None:
           cur = self.conn.cursor()
@@ -260,118 +255,15 @@ class PDBDB ():
         traceback.print_exc()
         sys.exit(1)
 
-  def redundancy(self, rfile = None):
-    """ Generate the redundancy data. If the sequence is the same
-    or the loops overlap, don't use it."""
-    from itertools import groupby
-    if self.conn == None:
-      return
-
-    duplicates = []
-    
-    # Firstly, if rfile is not None, we can read it and add duplicates from that
-    with open(rfile, 'r') as f:
-      for line in f.readlines():
-        tokens = line.replace(" ","").split(",")
-        for token in tokens[1:]:
-          duplicates.append((tokens[0], token))
-
-    cur = self.conn.cursor()
-    cur.execute("select * from model")
-    models = cur.fetchall()
-    for idx in range(0, len(models)):
-      model = models[idx]
-
-      for jdx in range(idx+1, len(models)):
-        check = models[jdx]
- 
-        # First, check if there are residue markers in the filename
-        if check[0] != model[0]:
-          if "_" in model[0]:
-            tokens_m = model[0].replace(" ","").split("_")
-            tokens_c = check[0].replace(" ","").split("_")
-            m_name = tokens_m[0]
-            c_name = tokens_c[0]
-
-            if m_name == c_name:
-              m_code = [''.join(g) for _, g in groupby(tokens_m[1], str.isalpha)]          
-              c_code = [''.join(g) for _, g in groupby(tokens_c[1], str.isalpha)]          
-              
-              if m_code[0] == c_code[0] and m_code[2] == c_code[2]:
-                ms = int(m_code[1])
-                me = int(m_code[3])
-                cs = int(c_code[1])
-                ce = int(c_code[3])
-                if (ms >= cs and me <= ce) or (cs >= ms and ce <= me):
-                  if not ((check[0], model[0]) in duplicates or (model[0], check[0]) in duplicates) :
-                    # Its a duplicate so add to list of dups
-                    print(tokens_m, tokens_c)
-                    duplicates.append((model[0], check[0]))
-    ii = 0
-    for (c,m) in duplicates:
-      cur.execute("SELECT * FROM redundancy where model = '" + m + "' and match = '" + c + "'")
-      dups = cur.fetchall()
-      if len(dups) == 0:
-        cur.execute("INSERT INTO redundancy (model, match) VALUES (%s, %s)", (c, m))
-        ii += 1
-        if ii >= 10:
-          self.conn.commit()
-          ii = 0
-
-    # We should also check the residue lists to make sure they aren't identical 
-    cur.execute("select * from model")
-    models = cur.fetchall()
-    
-    for idx in range(0, len(models)):
-      model = models[idx]
-
-      for jdx in range(idx+1, len(models)):
-        check = models[jdx]
-        if check[0] != model[0]:
-          if "_" in model[0]:
-            tokens_m = model[0].replace(" ","").split("_")
-            tokens_c = check[0].replace(" ","").split("_")
-            m_name = model[0].replace(" ","")
-            c_name = check[0].replace(" ","")
-          
-            if not ((c_name, m_name) in duplicates or (m_name, c_name) in duplicates) :
-              cur2 = self.conn.cursor()
-              cur2.execute("SELECT * FROM residue where model = '" + m_name + "' order by resorder")
-              m_res = []
-              residues = cur2.fetchall()
-              for res in residues:
-                m_res.append(res[1])
-
-              cur2.execute("SELECT * FROM residue where model = '" + c_name + "' order by resorder")
-              c_res = []
-              residues = cur2.fetchall()
-              for res in residues:
-                c_res.append(res[1])
-
-              if m_res == c_res:
-                # duplicate residues so add to redundancy
-                print(tokens_m, tokens_c)
-                duplicates.append((m_name, c_name))
-     
-    ii = 0 
-    for (c,m) in duplicates:
-      cur.execute("SELECT * FROM redundancy where model = '" + m + "' and match = '" + c + "'")
-      dups = cur.fetchall()
-      if len(dups) == 0:
-        cur.execute("INSERT INTO redundancy (model, match) VALUES (%s, %s)", (c, m))
-        ii += 1
-        if ii >= 10:
-          self.conn.commit()
-          ii = 0
-
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(description="Process arguments")
   parser.add_argument('db_name', metavar='db_name',\
       help='The destination database name.')
   parser.add_argument('dir_name', metavar='dir_name',\
       help='The directory with the PDBs we want to process.')
-  parser.add_argument('--rfile', dest='rfile',
-      help='The list of redundant PDB files - used with abdb.')
+  parser.add_argument('--abdb', dest='abdb',\
+      action='store_true', default=False,\
+      help='Using the AbDb PDB files. Default False.')
   parser.add_argument('--dry-run', dest='dry_run',\
       action='store_true', default=False,\
       help='Do not enter new data into the db. Default False.')
@@ -392,9 +284,6 @@ if __name__ == "__main__":
       count = count + 1
       if args['limit'] != -1 and count >= args['limit']:
         p.gen_angles()
-        p.redundancy(args["rfile"])
         sys.exit(0)
-  
+
   p.gen_angles()
-  p.redundancy(args["rfile"])
-     
