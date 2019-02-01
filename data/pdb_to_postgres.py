@@ -367,8 +367,7 @@ class PDBDB ():
                 # duplicate residues so add to redundancy
                 print(tokens_m, tokens_c)
                 duplicates.append((m_name, c_name))
-    
-    
+     
     ii = 0 
     for (c,m) in duplicates:
       cur.execute("SELECT * FROM redundancy where model = '" + m + "' and match = '" + c + "'")
