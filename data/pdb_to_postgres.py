@@ -50,7 +50,7 @@ class PDBDB ():
           # Extract the different residues 
           residues = []
           current_residue = [] # name, amino, num, x, y, z
-          current_name = ""
+          eurrent_name = ""
           dd = 0
           previdx = atoms[6]
 
@@ -125,7 +125,7 @@ class PDBDB ():
     
     with open("error_models.txt", 'w') as w:
       for item in error_models:
-        w.write(item + "\n")
+        w.write(str(item) + "\n")
   
   def _check(self, model):
     seq = ""
@@ -154,7 +154,7 @@ class PDBDB ():
 
     return (True, seq)
     
-  def process_pdb(self, pdb_path):
+  def process_pdb(self, pdb_path, complete_model=False):
     ''' Read a PDB and write to the DB.'''
     try:
       bn = os.path.basename(pdb_path),
@@ -226,6 +226,10 @@ class PDBDB ():
               self.conn.commit()
  
             for atom in model.get_atoms():
+              # If we have the complete model, I.e AbDb and not loopdb
+              # we need to extract atoms belonging to the range 3 either
+              # side of 95 to 102 on the heavy chain.
+
               #import pdb; pdb.set_trace()
               #print(atom, dir(atom))
               res = atom.get_parent()
@@ -244,7 +248,9 @@ class PDBDB ():
               aele = atom.element
         
               if self.conn != None:
-                cur.execute("INSERT INTO atom (model, serial, name, \
+                # Test to see if we have chains and what not, keeping 3 either side
+                if not complete_model or (achainid == "H" and aresseq >= 92 and aresseq <= 105):
+                  cur.execute("INSERT INTO atom (model, serial, name, \
                     altloc, resname, chainid, resseq, x, y, z, \
                     occupancy, tempfactor, element) \
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, \
@@ -252,7 +258,7 @@ class PDBDB ():
                     (loop_code, aserial, aname, aaltloc, aresname, \
                     achainid, aresseq, ax, ay, az, aocc, abfac, \
                     aele)) 
-                self.conn.commit()
+                  self.conn.commit()
 
       except Exception as e:
         print ("Exception in model insert: ", e)
@@ -270,11 +276,20 @@ class PDBDB ():
     duplicates = []
     
     # Firstly, if rfile is not None, we can read it and add duplicates from that
-    with open(rfile, 'r') as f:
-      for line in f.readlines():
-        tokens = line.replace(" ","").split(",")
-        for token in tokens[1:]:
-          duplicates.append((tokens[0], token))
+    if rfile != None:
+      with open(rfile, 'r') as f:
+        cur = self.conn.cursor()
+        for line in f.readlines():
+          tokens = line.replace(" ","").split(",")
+          for token in tokens[1:]:
+            token = token.replace(" ","")
+            # Simple test to make sure we have a good name
+            if len(token) > 4:
+              # Make sure the token represents a model that exists
+              cur.execute("SELECT * FROM model where code = '" + token + "'")
+              mods = cur.fetchall()
+              if len(mods) != 0:
+                duplicates.append((tokens[0], token))
 
     cur = self.conn.cursor()
     cur.execute("select * from model")
@@ -376,6 +391,10 @@ if __name__ == "__main__":
   parser.add_argument('--dry-run', dest='dry_run',\
       action='store_true', default=False,\
       help='Do not enter new data into the db. Default False.')
+  parser.add_argument('--full-model', dest='complete_model',\
+      action='store_true', default=False,\
+      help='PDB files contain more than just the loop. Default False.')
+ 
   parser.add_argument('--limit', dest='limit',\
       type=int, default=-1,\
       help='Limit the number of pdb files. Default unlimited.')
@@ -385,11 +404,11 @@ if __name__ == "__main__":
   print(args)
   if not args['dry_run']:
     p.db_connect(args["db_name"])
-
+  
   count = 0
   for dirname, dirnames, filenames in os.walk(args["dir_name"]):
     for filename in filenames:
-      p.process_pdb(os.path.join(dirname, filename))
+      p.process_pdb(os.path.join(dirname, filename), complete_model=args['complete_model'])
       count = count + 1
       if args['limit'] != -1 and count >= args['limit']:
         p.gen_angles()

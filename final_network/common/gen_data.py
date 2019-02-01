@@ -101,7 +101,7 @@ class Grabber(object):
       cur_model.execute("SELECT * from model")
 
     models = cur_model.fetchall()
-  
+
     for model in models:
       mname = model[0].replace(" ","") 
       # If we want to restrict via resolution here is where we do it

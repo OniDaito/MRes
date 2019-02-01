@@ -70,4 +70,12 @@ Again, this will take quite a while. On our base system this took a few days. Pr
 
 ### Building AbDb
 
-AbDb is much easier to build than LoopDB. The files are already processed and numbered. 
+AbDb is much easier to build than LoopDB. The files are already processed and numbered.
+
+The important thing to note however is AbDb contains full models, i.e more than just a polypeptide loop as LoopDB does. This means we have to extract the CDR-H3 from the model first. We extract the residues from 92 to 105 inclusive from the heavy chain. The CDR-H3 loop is defined in this system as being the residues from 95 to 102, but we take the 3 residues either side as well, in order to match LoopDB. We can remove these base residues later if we so wish. 
+
+Redundancy information is also needed, as many of the PDBs are equivalent. This is held in a txt file that can be downloaded from the same place as AbDb. 
+ 
+The following command creates the database for AbDb.
+
+    python pdb_to_postgres.py --full-model --rfile <path to redundancy txt file> <dbname> <path to pdbs>
