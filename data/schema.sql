@@ -170,20 +170,6 @@ CREATE TABLE redundancy (
 
 ALTER TABLE redundancy OWNER TO postgres;
 
-
-ALTER TABLE residue OWNER TO postgres;
-
---
--- Name: residue_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
---
-
-CREATE SEQUENCE residue_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
 ALTER TABLE residue_id_seq OWNER TO postgres;
 
 --

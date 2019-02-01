@@ -23,6 +23,7 @@ import argparse
 import torsions
 
 class PDBDB ():
+
   def __init__(self):
     self.parser = PDBParser()
     self.conn = None
@@ -33,7 +34,6 @@ class PDBDB ():
   
   def gen_angles(self):
     """ Generate the angles we will need for our neural net. """ 
-    error_models = []
     if self.conn != None:
       cur = self.conn.cursor()
  
@@ -43,7 +43,7 @@ class PDBDB ():
       for model in cur.fetchall():
         mname = model[0].replace(" ","")
         print("Generating angles for", mname)
-        cur.execute("SELECT * FROM atom where model = '" + mname + "' order by serial")
+        cur.execute("SELECT * FROM atom where model = '" + mname + "'")
         atoms = cur.fetchall()
    
         try: 
@@ -55,8 +55,8 @@ class PDBDB ():
           previdx = atoms[6]
 
           for atom in atoms:
-            # model, serial name altloc resname chainid resseq icode x y z occupancy tempf element id 
-          
+            # model, num, label, space, amino, chain, res num, none, 
+            # x, y, z, <rest not needed>
             if atom[4] != current_name or atom[2] == 'N':
               current_name = atom[4]
               if len(current_residue) != 0 :
@@ -73,8 +73,11 @@ class PDBDB ():
             current_residue.append(rr)
 
           residues.append(current_residue)
-          # Previously we dropped 3 residues either side. We now include
-          # the entire PDB file and drop afterwards if we so choose.
+          # We drop the first and last 3 as these are the anchor points
+          # in pdb_loopdb apparently
+          residues = residues[3:]
+          residues = residues[:-3]
+  
           if len(residues) < 3:
             continue
 
@@ -88,12 +91,12 @@ class PDBDB ():
               self.conn.commit()
               
             except Exception as e:
-              print("Error inserting into DB", model, e)
+              print("Error inserting into DB - " + model, e)
               traceback.print_exc()
-              error_models.append(model)
+              sys.exit()
 
             idx+=1
-          
+ 
           # Now we have all the residues, work out the angles and write
           # to the database.
           angles = torsions.derive_angles(residues)
@@ -107,16 +110,13 @@ class PDBDB ():
   
             except Exception as e:
               print("Error inserting into DB - " + model, e)
-              error_models.append(model)
             idx +=1
           
           sys.stdout.write("\n")
         except Exception as e:
-          print("Error with model: ", model)
           print(e)
-          error_models.append(model)
           traceback.print_exc()
-          #sys.exit()
+          sys.exit()
 
     except Exception as e:
         print ("Exception in DB read: ", e)
@@ -182,7 +182,7 @@ class PDBDB ():
         # We make a call to get the mmCIF file which we need to make
         # this work
         pdbl = PDBList()      
-        dn = "" + filename[1].lower() + filename[2].lower() + "/" + model_code.lower() + ".cif"
+        dn = "" + filename[1] + filename[2] + "/" + model_code + ".cif"
   
         if not os.path.isfile(dn):
           pdbl.retrieve_pdb_file(model_code.upper())
@@ -190,26 +190,25 @@ class PDBDB ():
         resolution = -1.0
         rvalue = -1.0
         rfree = -1.0
-        try: 
-          with open(dn, 'r') as f:
-            pdbraw = f.readlines()  
-            try:
-              for line in pdbraw:
-                if "_refine.ls_R_factor_R_work " in line:
-                  tokens = line.split(" ")
-                  rvalue = float(tokens[-2])
+ 
+        with open(dn, 'r') as f:
+          pdbraw = f.readlines()  
+          try:
+            for line in pdbraw:
+              if "_refine.ls_R_factor_R_work " in line:
+                tokens = line.split(" ")
+                rvalue = float(tokens[-2])
 
-                elif "_refine.ls_R_factor_R_free " in line:
-                  tokens = line.split(" ")
-                  rfree=float(tokens[-2])
-         
-                elif "_reflns.d_resolution_high " in line:
-                  tokens = line.split(" ")
-                  resolution=float(tokens[-2])
-            except Exception as e:
-              print("Error parsing R values", e)
-        except Exception as e:
-          print("Failed to read R file", e)
+              elif "_refine.ls_R_factor_R_free " in line:
+                tokens = line.split(" ")
+                rfree=float(tokens[-2])
+       
+              elif "_reflns.d_resolution_high " in line:
+                tokens = line.split(" ")
+                resolution=float(tokens[-2])
+          except Exception as e:
+            print("Error parsing R values", e)
+            continue
 
         if self.conn != None:
           cur = self.conn.cursor()
@@ -385,15 +384,15 @@ if __name__ == "__main__":
       help='The destination database name.')
   parser.add_argument('dir_name', metavar='dir_name',\
       help='The directory with the PDBs we want to process.')
-  parser.add_argument('--rfile', dest='rfile',
-      help='The list of redundant PDB files - used with abdb.')
+  parser.add_argument('--abdb', dest='abdb',\
+      action='store_true', default=False,\
+      help='Using the AbDb PDB files. Default False.')
   parser.add_argument('--dry-run', dest='dry_run',\
       action='store_true', default=False,\
       help='Do not enter new data into the db. Default False.')
   parser.add_argument('--full-model', dest='complete_model',\
       action='store_true', default=False,\
-      help='PDB files contain more than just the loop. Default False.')
- 
+      help='PDB files contain more than just the loop. Default False.') 
   parser.add_argument('--limit', dest='limit',\
       type=int, default=-1,\
       help='Limit the number of pdb files. Default unlimited.')
@@ -411,9 +410,6 @@ if __name__ == "__main__":
       count = count + 1
       if args['limit'] != -1 and count >= args['limit']:
         p.gen_angles()
-        p.redundancy(args["rfile"])
         sys.exit(0)
-  
+
   p.gen_angles()
-  p.redundancy(args["rfile"])
-     
