@@ -65,6 +65,7 @@ Our neural networks work with a [Python Pickle File](https://wiki.python.org/moi
 ### Download from Zenodo
 
 * The LoopDB set can be downloaded here: [https://zenodo.org/record/2549426](https://zenodo.org/record/2549426) (loopdb.pickle). This contains the latest loops from the protein databank, from length 3 to 28.
+* The AbDb set can also be downloaded from Zenodo: [https://zenodo.org/record/2560436](https://zenodo.org/record/2560436). Again, this contains loops of length 3 to 28 from the AbDb dataset.
 
 ### Generate your own pickle file
 

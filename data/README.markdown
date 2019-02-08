@@ -101,7 +101,7 @@ The following command creates the database for AbDb.
 
 To generate the pickle file, you can just run the neural network and it will generate one, but I've found it better to write a generator with more options, where one can choose various options, such as loop length, representation type and similar. The file *batcher.py* in the *final_network/common/* will generate the pickle file from a particular database. Several options exist to limit various sizes, use different encoding schemes and such, but the minimum needed is as follows:
 
-    python batcher.py --dbname loopdb --out test.pickle --max 28
+    python batcher.py --dbname <database name> --out <output pickle filename> --max 28
 
 *dbname* refers to the name of the postgresql database we are reading from. *out* is the name of the picklefile and *max* refers to the maximum length of loop to be included.
 
