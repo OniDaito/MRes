@@ -37,22 +37,23 @@ class PDBDB ():
     if self.conn != None:
       cur = self.conn.cursor()
  
+    error_models = []
     try:
       cur.execute("SELECT * FROM model")
 
       for model in cur.fetchall():
         mname = model[0].replace(" ","")
         print("Generating angles for", mname)
-        cur.execute("SELECT * FROM atom where model = '" + mname + "'")
+        cur.execute("SELECT * FROM atom where model = '" + mname + "' order by serial")
         atoms = cur.fetchall()
    
         try: 
           # Extract the different residues 
           residues = []
           current_residue = [] # name, amino, num, x, y, z
-          eurrent_name = ""
+          current_name = ""
           dd = 0
-          previdx = atoms[6]
+          previdx = int(atoms[0][6])
 
           for atom in atoms:
             # model, num, label, space, amino, chain, res num, none, 
@@ -74,10 +75,10 @@ class PDBDB ():
 
           residues.append(current_residue)
           # We drop the first and last 3 as these are the anchor points
-          # in pdb_loopdb apparently
+          # in both abdb and loopdb apparently
           residues = residues[3:]
           residues = residues[:-3]
-  
+
           if len(residues) < 3:
             continue
 
@@ -91,9 +92,10 @@ class PDBDB ():
               self.conn.commit()
               
             except Exception as e:
-              print("Error inserting into DB - " + model, e)
+              error_models.append(mname)
+              print("Error inserting into DB - " + model[0], e)
               traceback.print_exc()
-              sys.exit()
+              #sys.exit()
 
             idx+=1
  
@@ -108,15 +110,18 @@ class PDBDB ():
                  (mname, aa[0], aa[1], aa[2], idx))
              self.conn.commit()
   
-            except Exception as e:
-              print("Error inserting into DB - " + model, e)
+            except Exception as e: 
+              error_models.append(mname)
+              print("Error inserting into DB - " + mname, e)
             idx +=1
           
           sys.stdout.write("\n")
         except Exception as e:
+          error_models.append(mname)
+          print("Error with model", mname)
           print(e)
           traceback.print_exc()
-          sys.exit()
+          #sys.exit()
 
     except Exception as e:
         print ("Exception in DB read: ", e)
@@ -289,38 +294,38 @@ class PDBDB ():
               mods = cur.fetchall()
               if len(mods) != 0:
                 duplicates.append((tokens[0], token))
+    else:
+      cur = self.conn.cursor()
+      cur.execute("select * from model")
+      models = cur.fetchall()
+      for idx in range(0, len(models)):
+        model = models[idx]
 
-    cur = self.conn.cursor()
-    cur.execute("select * from model")
-    models = cur.fetchall()
-    for idx in range(0, len(models)):
-      model = models[idx]
+        for jdx in range(idx+1, len(models)):
+          check = models[jdx]
+   
+          # First, check if there are residue markers in the filename
+          if check[0] != model[0]:
+            if "_" in model[0]:
+              tokens_m = model[0].replace(" ","").split("_")
+              tokens_c = check[0].replace(" ","").split("_")
+              m_name = tokens_m[0]
+              c_name = tokens_c[0]
 
-      for jdx in range(idx+1, len(models)):
-        check = models[jdx]
- 
-        # First, check if there are residue markers in the filename
-        if check[0] != model[0]:
-          if "_" in model[0]:
-            tokens_m = model[0].replace(" ","").split("_")
-            tokens_c = check[0].replace(" ","").split("_")
-            m_name = tokens_m[0]
-            c_name = tokens_c[0]
-
-            if m_name == c_name:
-              m_code = [''.join(g) for _, g in groupby(tokens_m[1], str.isalpha)]          
-              c_code = [''.join(g) for _, g in groupby(tokens_c[1], str.isalpha)]          
-              
-              if m_code[0] == c_code[0] and m_code[2] == c_code[2]:
-                ms = int(m_code[1])
-                me = int(m_code[3])
-                cs = int(c_code[1])
-                ce = int(c_code[3])
-                if (ms >= cs and me <= ce) or (cs >= ms and ce <= me):
-                  if not ((check[0], model[0]) in duplicates or (model[0], check[0]) in duplicates) :
-                    # Its a duplicate so add to list of dups
-                    print(tokens_m, tokens_c)
-                    duplicates.append((model[0], check[0]))
+              if m_name == c_name:
+                m_code = [''.join(g) for _, g in groupby(tokens_m[1], str.isalpha)]          
+                c_code = [''.join(g) for _, g in groupby(tokens_c[1], str.isalpha)]          
+                
+                if m_code[0] == c_code[0] and m_code[2] == c_code[2]:
+                  ms = int(m_code[1])
+                  me = int(m_code[3])
+                  cs = int(c_code[1])
+                  ce = int(c_code[3])
+                  if (ms >= cs and me <= ce) or (cs >= ms and ce <= me):
+                    if not ((check[0], model[0]) in duplicates or (model[0], check[0]) in duplicates) :
+                      # Its a duplicate so add to list of dups
+                      print(tokens_m, tokens_c)
+                      duplicates.append((model[0], check[0]))
     ii = 0
     for (c,m) in duplicates:
       cur.execute("SELECT * FROM redundancy where model = '" + m + "' and match = '" + c + "'")
@@ -331,6 +336,9 @@ class PDBDB ():
         if ii >= 10:
           self.conn.commit()
           ii = 0
+    # if we have an rfile just use that
+    if rfile != None:
+      return
 
     # We should also check the residue lists to make sure they aren't identical 
     cur.execute("select * from model")
@@ -384,9 +392,6 @@ if __name__ == "__main__":
       help='The destination database name.')
   parser.add_argument('dir_name', metavar='dir_name',\
       help='The directory with the PDBs we want to process.')
-  parser.add_argument('--abdb', dest='abdb',\
-      action='store_true', default=False,\
-      help='Using the AbDb PDB files. Default False.')
   parser.add_argument('--dry-run', dest='dry_run',\
       action='store_true', default=False,\
       help='Do not enter new data into the db. Default False.')
@@ -396,6 +401,9 @@ if __name__ == "__main__":
   parser.add_argument('--limit', dest='limit',\
       type=int, default=-1,\
       help='Limit the number of pdb files. Default unlimited.')
+  parser.add_argument('--rfile',\
+      default=None,\
+      help='Pass in a redundancy file')
 
   args = vars(parser.parse_args())
   p = PDBDB()
@@ -404,12 +412,15 @@ if __name__ == "__main__":
     p.db_connect(args["db_name"])
   
   count = 0
+
   for dirname, dirnames, filenames in os.walk(args["dir_name"]):
     for filename in filenames:
       p.process_pdb(os.path.join(dirname, filename), complete_model=args['complete_model'])
       count = count + 1
       if args['limit'] != -1 and count >= args['limit']:
         p.gen_angles()
+        p.redundancy(rfile=args['rfile'])
         sys.exit(0)
 
   p.gen_angles()
+  p.redundancy(rfile=args['rfile'])
